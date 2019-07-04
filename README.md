@@ -33,4 +33,6 @@ I have already prepared the same template so that you can run your implementatio
 
 The gradcheck should be very similar and the implementation should be able to pass it (If too many warnings happen and the relative difference is > 0.01 then its probably incorrect). 
 
-Then you can implement sampling and see how it trains to generate new characters (It should generate much better than the Vanilla RNN). 
+Then you can implement sampling and see how it trains to generate new characters (It should generate much better than the Vanilla RNN).
+
+Note that: the template code and the RNN code is just a guide to make you have a fast start. You are encouraged to make any (change) if necessary, as long as the final work ends up with an LSTM network. 
