@@ -176,7 +176,7 @@ def backward(activations, clipping=True):
         #dE/dy = W dot dE/dx
         dh = np.dot(Why.T, do) + dhnext
         #d(activation) * dE/dh(ot*tanh(ct))
-        do_gate = dh * dtanh(cs[t])
+        do_gate = dh * np.tanh(cs[t])
         do_gate_net = do_gate * dsigmoid(o_gate[t])
         dbo +=  do_gate_net
         dWo += np.dot(do_gate_net, zs[t].T)
@@ -207,7 +207,7 @@ def backward(activations, clipping=True):
         
         #input: z = [h,wes]
         # as z influences the error of all gates, the gradient is a sum of all dependent gates
-        dz = np.dot(Wo.T, do_gate_net) + np.dot(Wc.T, dc_hat_net) + np.dot(Wi.T, di_gate_net) + np.dot(Wc.T, df_gate_net)
+        dz = np.dot(Wo.T, do_gate_net) + np.dot(Wc.T, dc_hat_net) + np.dot(Wi.T, di_gate_net) + np.dot(Wf.T, df_gate_net)
         #pass c and h back through time
         dcnext = f_gate[t] * dc
         dhnext, dwes = dz[:dhnext.shape[0]], dz[dhnext.shape[0]:]
@@ -234,7 +234,7 @@ def sample(memory, seed_ix, n):
     h, c = memory
     x = np.zeros((vocab_size, 1))
     x[seed_ix] = 1
-
+    generated_chars = []
     for t in range(n):
         # IMPLEMENT THE FORWARD FUNCTION ONE MORE TIME HERE
         # BUT YOU DON"T NEED TO STORE THE ACTIVATIONS
@@ -251,11 +251,11 @@ def sample(memory, seed_ix, n):
         c_hat = np.tanh(np.dot(Wc, z) + bc)
         #long term memory
         c = c*f_gate + i_gate*c_hat
-        o_gate = sigmoid(np.dot(Wo, z), bo)
+        o_gate = sigmoid(np.dot(Wo, z) + bo)
         #short term memory
         h = np.tanh(c) * o_gate
         
-        o = Whx*h + by
+        o = np.dot(Why, h) + by
         p = softmax(o)
         
         # the the distribution, we randomly generate samples:
