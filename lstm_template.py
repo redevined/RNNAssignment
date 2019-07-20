@@ -116,14 +116,14 @@ def forward(inputs, targets, memory):
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
-        cs[t] = f_gate * cs[t-1] + i_gate * c_hat
+        cs[t] = f_gate[t] * cs[t-1] + i_gate[t] * c_hat[t]
 
         # output gate
         o_gate[t] = sigmoid(np.dot(Wo, zs[t]) + bo)
 
         # new hidden state for the LSTM
         # h = o_gate * tanh(c_new)
-        hs[t] = o_gate * np.tanh(cs[t])
+        hs[t] = o_gate[t] * np.tanh(cs[t])
 
         # DONE LSTM
         # output layer - softmax and cross-entropy loss
@@ -167,9 +167,8 @@ def backward(activations, clipping=True):
 
     # back propagation through time starts here
     for t in reversed(range(len(inputs))):
-        do = ps[t] - ys[t]
-        
         #gradient of output layer
+        do = ps[t] - ys[t]
         dWhy += np.dot(do, hs[t].T)
         dby += do
         
@@ -177,13 +176,13 @@ def backward(activations, clipping=True):
         #dE/dy = W dot dE/dx
         dh = np.dot(Why.T, do) + dhnext
         #d(activation) * dE/dh(ot*tanh(ct))
-        do_gate = dh * tanh(cs[t])
+        do_gate = dh * dtanh(cs[t])
         do_gate_net = do_gate * dsigmoid(o_gate[t])
         dbo +=  do_gate_net
         dWo += np.dot(do_gate_net, zs[t].T)
         
         #c_gate layer
-        dc = dh * o_gate[t] * dtan(cs[t]) + dcnext
+        dc = dh * o_gate[t] * dtanh(cs[t]) + dcnext
         
         #c[t] = it * c_hat + c[t-1]*f_gate
         #dE/dc_hat = dE/dc*dc/dc_hat = i[t] * dc
@@ -195,23 +194,23 @@ def backward(activations, clipping=True):
         
         #di = dE/dc * dc/di_gate = dc * d(i_gate*o_gate + c[t-1]*f_gate)/di_gate
         di_gate = dc * c_hat[t]
-        di_gate_net = di * dsigmoid(i_gate[t])
+        di_gate_net = di_gate * dsigmoid(i_gate[t])
         dbi += di_gate_net
         dWi += np.dot(di_gate_net, zs[t].T)
         
         #f_gate layer
         #df = dE/dc * dc/df_gate = dc * d(i_gate*o_gate + c[t-1]*f_gate)/df_gate
         df_gate = dc * cs[t-1]
-        df_gate_net = df * dsigmoid(f_gate[t])
+        df_gate_net = df_gate * dsigmoid(f_gate[t])
         dbf += df_gate_net
         dWf += np.dot(df_gate_net, zs[t].T)
         
         #input: z = [h,wes]
         # as z influences the error of all gates, the gradient is a sum of all dependent gates
-        dz = np.dot(Wo, do_gate_net) + np.dot(Wc, dc_hat_net) + np.dot(Wi, di_gate_net) + np.dot(Wc, dc_gate_net)
+        dz = np.dot(Wo.T, do_gate_net) + np.dot(Wc.T, dc_hat_net) + np.dot(Wi.T, di_gate_net) + np.dot(Wc.T, df_gate_net)
         #pass c and h back through time
         dcnext = f_gate[t] * dc
-        dhnext, dwes = dz[:dhnext.shape[0]], dz[dhnext.shape[0]:]]
+        dhnext, dwes = dz[:dhnext.shape[0]], dz[dhnext.shape[0]:]
         
         #backward to the embedding projection
         dWex += np.dot(dwes, xs[t].T)
