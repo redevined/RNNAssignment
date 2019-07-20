@@ -83,7 +83,7 @@ def forward(inputs, targets, memory):
 
     # Here you should allocate some variables to store the activations during forward
     # One of them here is to store the hiddens and the cells
-    cs, hs, os, ps, xs, wes, ys, zs = {}, {}, {}, {}, {}, {}, {}, {}
+    cs, hs, os, ps, xs, wes, ys, zs, f_gate, i_gate, c_hat, o_gate = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
     hs[-1] = np.copy(hprev)
     cs[-1] = np.copy(cprev)
@@ -106,20 +106,20 @@ def forward(inputs, targets, memory):
         # YOUR IMPLEMENTATION should begin from here
 
         # compute the forget gate
-        f_gate = sigmoid(np.dot(Wf, zs[t]) + bf)
+        f_gate[t] = sigmoid(np.dot(Wf, zs[t]) + bf)
 
         # compute the input gate
-        i_gate = sigmoid(np.dot(Wi, zs[t]) + bi)
+        i_gate[t] = sigmoid(np.dot(Wi, zs[t]) + bi)
 
         # compute the candidate memory
-        c_hat = np.tanh(np.dot(Wc, zs[t]) + bc)
+        c_hat[t] = np.tanh(np.dot(Wc, zs[t]) + bc)
 
         # new memory: applying forget gate on the previous memory
         # and then adding the input gate on the candidate memory
         cs[t] = f_gate * cs[t-1] + i_gate * c_hat
 
         # output gate
-        o_gate = sigmoid(np.dot(Wo, zs[t]) + bo)
+        o_gate[t] = sigmoid(np.dot(Wo, zs[t]) + bo)
 
         # new hidden state for the LSTM
         # h = o_gate * tanh(c_new)
@@ -145,7 +145,7 @@ def forward(inputs, targets, memory):
 
     # define your activations
     memory = (hs[len(inputs)-1], cs[len(inputs)-1])
-    activations = hs[t]
+    activations = (cs, hs, os, ps, xs, wes, ys, zs, f_gate, i_gate, c_hat, o_gate)
 
     return loss, activations, memory
 
@@ -160,16 +160,62 @@ def backward(activations, clipping=True):
     dbf, dbi, dbc, dbo = np.zeros_like(bf), np.zeros_like(bi),np.zeros_like(bc), np.zeros_like(bo)
 
     # similar to the hidden states in the vanilla RNN
+    cs, hs, os, ps, xs, wes, ys, zs, f_gate, i_gate, c_hat, o_gate = activations
     # We need to initialize the gradients for these variables
     dhnext = np.zeros_like(hs[0])
     dcnext = np.zeros_like(cs[0])
 
     # back propagation through time starts here
     for t in reversed(range(len(inputs))):
-
-        # IMPLEMENT YOUR BACKPROP HERE
-        # refer to the file elman_rnn.py for more details
-
+        do = ps[t] - ys[t]
+        
+        #gradient of output layer
+        dWhy += np.dot(do, hs[t].T)
+        dby += do
+        
+        #output gate layer
+        #dE/dy = W dot dE/dx
+        dh = np.dot(Why.T, do) + dhnext
+        #d(activation) * dE/dh(ot*tanh(ct))
+        do_gate = dh * tanh(cs[t])
+        do_gate_net = do_gate * dsigmoid(o_gate[t])
+        dbo +=  do_gate_net
+        dWo += np.dot(do_gate_net, zs[t].T)
+        
+        #c_gate layer
+        dc = dh * o_gate[t] * dtan(cs[t]) + dcnext
+        
+        #c[t] = it * c_hat + c[t-1]*f_gate
+        #dE/dc_hat = dE/dc*dc/dc_hat = i[t] * dc
+        dc_hat = dc * i_gate[t]
+        #dE/dbc = dE/dc_hat * dc_hat/dbc
+        dc_hat_net = dc_hat * dtanh(c_hat[t])
+        dbc += dc_hat_net
+        dWc += np.dot(dc_hat_net, zs[t].T)
+        
+        #di = dE/dc * dc/di_gate = dc * d(i_gate*o_gate + c[t-1]*f_gate)/di_gate
+        di_gate = dc * c_hat[t]
+        di_gate_net = di * dsigmoid(i_gate[t])
+        dbi += di_gate_net
+        dWi += np.dot(di_gate_net, zs[t].T)
+        
+        #f_gate layer
+        #df = dE/dc * dc/df_gate = dc * d(i_gate*o_gate + c[t-1]*f_gate)/df_gate
+        df_gate = dc * cs[t-1]
+        df_gate_net = df * dsigmoid(f_gate[t])
+        dbf += df_gate_net
+        dWf += np.dot(df_gate_net, zs[t].T)
+        
+        #input: z = [h,wes]
+        # as z influences the error of all gates, the gradient is a sum of all dependent gates
+        dz = np.dot(Wo, do_gate_net) + np.dot(Wc, dc_hat_net) + np.dot(Wi, di_gate_net) + np.dot(Wc, dc_gate_net)
+        #pass c and h back through time
+        dcnext = f_gate[t] * dc
+        dhnext, dwes = dz[:dhnext.shape[0]], dz[dhnext.shape[0]:]]
+        
+        #backward to the embedding projection
+        dWex += np.dot(dwes, xs[t].T)
+        
 
     if clipping:
         # clip to mitigate exploding gradients
@@ -194,8 +240,35 @@ def sample(memory, seed_ix, n):
         # IMPLEMENT THE FORWARD FUNCTION ONE MORE TIME HERE
         # BUT YOU DON"T NEED TO STORE THE ACTIVATIONS
 
+        # convert word indices to word embeddings
+        we = np.dot(Wex, x)
+        z = np.row_stack((h, we))
+        
+        #gates
+        f_gate = sigmoid(np.dot(Wf, z) + bf)
+        # compute the input gate
+        i_gate = sigmoid(np.dot(Wi, z) + bi)
+        # compute the candidate memory
+        c_hat = np.tanh(np.dot(Wc, z) + bc)
+        #long term memory
+        c = c*f_gate + i_gate*c_hat
+        o_gate = sigmoid(np.dot(Wo, z), bo)
+        #short term memory
+        h = np.tanh(c) * o_gate
+        
+        o = Whx*h + by
+        p = softmax(o)
+        
+        # the the distribution, we randomly generate samples:
+        ix = np.random.multinomial(1, p.ravel())
+        x = np.zeros((vocab_size, 1))
 
-    return
+        for j in range(len(ix)):
+            if ix[j] == 1:
+                index = j
+        x[index] = 1
+        generated_chars.append(index)
+    return generated_chars
 
 if option == 'train':
 
