@@ -42,10 +42,10 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 4
-hidden_size = 32  # size of hidden layer of neurons
+emb_size = 32
+hidden_size = 200  # size of hidden layer of neurons
 seq_length = 64  # number of steps to unroll the RNN for
-learning_rate = 5e-2
+learning_rate = 8e-2
 max_updates = 500000
 
 concat_size = emb_size + hidden_size
@@ -181,8 +181,8 @@ def backward(activations, clipping=True):
         dbo +=  do_gate_net
         dWo += np.dot(do_gate_net, zs[t].T)
         
-        #c_gate layer
-        dc = dh * o_gate[t] * dtanh(cs[t]) + dcnext
+        #c_gate layer -> ATTENTION dtanh does not include the tangens!
+        dc = dh * o_gate[t] * dtanh(np.tanh(cs[t])) + dcnext
         
         #c[t] = it * c_hat + c[t-1]*f_gate
         #dE/dc_hat = dE/dc*dc/dc_hat = i[t] * dc
@@ -207,7 +207,8 @@ def backward(activations, clipping=True):
         
         #input: z = [h,wes]
         # as z influences the error of all gates, the gradient is a sum of all dependent gates
-        dz = np.dot(Wo.T, do_gate_net) + np.dot(Wc.T, dc_hat_net) + np.dot(Wi.T, di_gate_net) + np.dot(Wf.T, df_gate_net)
+        dz = np.zeros_like(zs[0])
+        dz += np.dot(Wo.T, do_gate_net) + np.dot(Wc.T, dc_hat_net) + np.dot(Wi.T, di_gate_net) + np.dot(Wf.T, df_gate_net)
         #pass c and h back through time
         dcnext = f_gate[t] * dc
         dhnext, dwes = dz[:dhnext.shape[0]], dz[dhnext.shape[0]:]
@@ -261,7 +262,8 @@ def sample(memory, seed_ix, n):
         # the the distribution, we randomly generate samples:
         ix = np.random.multinomial(1, p.ravel())
         x = np.zeros((vocab_size, 1))
-
+        
+        index = 0
         for j in range(len(ix)):
             if ix[j] == 1:
                 index = j

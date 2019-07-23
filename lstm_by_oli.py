@@ -42,8 +42,8 @@ std = 0.1
 option = sys.argv[1]
 
 # hyperparameters
-emb_size = 4
-hidden_size = 32  # size of hidden layer of neurons
+emb_size = 32
+hidden_size = 100  # size of hidden layer of neurons
 seq_length = 64  # number of steps to unroll the RNN for
 learning_rate = 5e-2
 max_updates = 500000
